@@ -1,0 +1,87 @@
+import os
+import streamlit as st
+import pandas as pd
+from transformers import pipeline
+
+# Get the current working directory
+current_dir = os.getcwd()
+
+# Construct the path to the models folder
+models_dir = os.path.join(current_dir, "Models")
+
+# Specify the model paths relative to the models folder
+summarizer_model_path = os.path.join(models_dir, "t5_base")
+qa_model_path = os.path.join(models_dir, "distilbert-base-cased-distilled-squad")
+
+# Load summarization and question-answering pipelines from the specified models
+summarizer = pipeline("summarization", model=summarizer_model_path)
+qa_pipeline = pipeline("question-answering", model=qa_model_path)
+
+
+def summarize_text(text):
+    # Split text into smaller chunks if necessary
+    max_chunk_size = 1024  # maximum token length for the model
+    chunks = [text[i:i + max_chunk_size] for i in range(0, len(text), max_chunk_size)]
+    summaries = []
+    for chunk in chunks:
+        summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)
+        summaries.append(summary[0]['summary_text'])
+    return ' '.join(summaries)
+
+def extract_info(text, question):
+    # Use the question-answering model to extract specific information
+    result = qa_pipeline(question=question, context=text)
+    return result['answer'] if result['score'] > 0.1 else "Not provided"
+
+# Streamlit app
+st.set_page_config(layout="wide")
+st.title("AJAA App for Sleep Parameters Extraction")
+
+# Create columns for layout
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    # Text input
+    text = st.text_area("Enter the medical notes you want to summarize:", height=500)
+
+    # Add a button to trigger summarization and extraction
+    if st.button("Process Text"):
+        if text:
+            # Display summarization output
+            st.header("Summarize")
+            summary = summarize_text(text)
+            st.write(summary)
+        else:
+            st.write("Please enter some text to summarize.")
+
+        with col2:
+            st.header("Parameters")
+            parameters = {
+                "TST": "What is the total sleep time?",
+                "Sleep efficiency (SE)": "What is the sleep efficiency?",
+                "WASO": "What is the wakefulness after sleep onset?",
+                "AHI": "What is the AHI?",
+                "SOL": "What is the sleep onset latency?",
+                "Wake/Alert": "What is the wake/alert time?",
+                "N1 (Stage 1) - Light Sleep (5%)": "What is the percentage of N1 (Stage 1) sleep?",
+                "N2 (Stage 2) - Deeper Sleep (45%)": "What is the percentage of N2 (Stage 2) sleep?",
+                "N3 (Stage 3) - Deepest Non-REM Sleep (25%)": "What is the percentage of N3 (Stage 3) sleep?",
+                "REM (25%)": "What is the percentage of REM sleep?",
+                "SaO2 average": "What is the average SaO2?",
+                "SaO2 nadir or minimum": "What is the minimum SaO2?",
+                "ODI": "What is the oxygen desaturation index?",
+                "CAI": "What is the CAI?",
+                "CHI": "What is the CHI?",
+                "CAHI": "What is the CAHI?",
+            }
+
+            if text:
+                for param, question in parameters.items():
+                    parameters[param] = extract_info(text, question)
+            else:
+                for param in parameters:
+                    parameters[param] = "Not provided"
+
+            # Create a DataFrame for the parameters
+            df = pd.DataFrame(parameters.items(), columns=["Parameter", "Amount"])
+            st.dataframe(df, width=400)
